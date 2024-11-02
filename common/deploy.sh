@@ -30,21 +30,20 @@ for file in `\find etc -type f`; do
 done
 
 # アプリケーションのビルド
-APP_NAME=isucari
-cd /home/isucon/webapp/go/
+cd /home/isucon/private_isu/webapp/golang/
 
 # もしpgo.pb.gzがあればPGOを利用してビルド
 if [ -e pgo.pb.gz ]; then
-  go build -o ${APP_NAME} -pgo=pgo.pb.gz
+  go build -o app -pgo=pgo.pb.gz
 else
-  go build -o ${APP_NAME}
+  go build -o app
 fi
 
 
 # ミドルウェア・Appの再起動
 sudo systemctl restart mysql
 sudo systemctl restart nginx
-sudo systemctl restart ${APP_NAME}.go
+sudo systemctl restart isu-go
 
 # slow query logの有効化
 # QUERY="
