@@ -191,7 +191,7 @@ func makePosts(results []Post, csrfToken string, allComments bool) ([]Post, erro
 				comments = comments
 			}
 		} else {
-			err := db.Get(&comments, "SELECT * FROM `comments` WHERE `post_id` = ? ORDER BY `created_at`", p.ID)
+			err := db.Select(&comments, "SELECT * FROM `comments` WHERE `post_id` = ? ORDER BY `created_at`", p.ID)
 			if err != nil {
 				return nil, err
 			}
