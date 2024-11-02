@@ -662,7 +662,7 @@ func postIndex(w http.ResponseWriter, r *http.Request) {
 		query,
 		me.ID,
 		mime,
-		filedata,
+		[]byte{}, // filedata,
 		r.FormValue("body"),
 	)
 	if err != nil {
@@ -675,8 +675,31 @@ func postIndex(w http.ResponseWriter, r *http.Request) {
 		log.Print(err)
 		return
 	}
+	var ext string
+	switch mime {
+	case "image/jpeg":
+		ext = "jpg"
+	case "image/png":
+		ext = "png"
+	case "image/gif":
+		ext = "gif"
+	}
+	writeImageToFile(filedata, fmt.Sprintf("%d.%s", pid, ext))
 
 	http.Redirect(w, r, "/posts/"+strconv.FormatInt(pid, 10), http.StatusFound)
+}
+
+func writeImageToFile(image []byte, name string) error {
+	f, err := os.Create(fmt.Sprintf("/home/isucon/private_isu/webapp/img/%s", name))
+	if err != nil {
+		return fmt.Errorf("failed to create image file %s: %w", name, err)
+	}
+	defer f.Close()
+	_, err = f.Write(image)
+	if err != nil {
+		return fmt.Errorf("failed to write image file %s: %w", name, err)
+	}
+	return nil
 }
 
 func getImage(w http.ResponseWriter, r *http.Request) {
@@ -687,6 +710,15 @@ func getImage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	ext := r.PathValue("ext")
+	filename := fmt.Sprintf("/home/isucon/private_isu/webapp/img/%d.%s", pid, ext)
+	_, err = os.Stat(filename)
+	if err == nil {
+		w.Header().Set("X-Accel-Redirect", filename)
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
 	post := Post{}
 	err = db.Get(&post, "SELECT * FROM `posts` WHERE `id` = ?", pid)
 	if err != nil {
@@ -694,12 +726,11 @@ func getImage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ext := r.PathValue("ext")
-
 	if ext == "jpg" && post.Mime == "image/jpeg" ||
 		ext == "png" && post.Mime == "image/png" ||
 		ext == "gif" && post.Mime == "image/gif" {
 		w.Header().Set("Content-Type", post.Mime)
+		writeImageToFile(post.Imgdata, fmt.Sprintf("%d.%s", post.ID, ext))
 		_, err := w.Write(post.Imgdata)
 		if err != nil {
 			log.Print(err)
