@@ -13,14 +13,15 @@ bin
 go
 local
 
-webapp/nodejs/
-webapp/perl/
-webapp/php/
-webapp/python/
-webapp/ruby/
-webapp/rust/
-!webapp/go/
-!webapp/sql/
+private_isu/webapp/nodejs/
+private_isu/webapp/perl/
+private_isu/webapp/php/
+private_isu/webapp/python/
+private_isu/webapp/ruby/
+private_isu/webapp/rust/
+private_isu/benchmarker/
+!private_isu/webapp/golang/
+!private_isu/webapp/sql/
 
 # 環境変数のファイル名に合わせること
 env.sh
@@ -32,3 +33,5 @@ env.sh
 
 pprotein
 pprotein-agent
+
+backup/
