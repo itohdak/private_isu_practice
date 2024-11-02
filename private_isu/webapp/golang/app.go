@@ -22,6 +22,8 @@ import (
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/gorilla/sessions"
 	"github.com/jmoiron/sqlx"
+
+	"github.com/kaz/pprotein/integration/standalone"
 )
 
 var (
@@ -262,6 +264,13 @@ func getTemplPath(filename string) string {
 
 func getInitialize(w http.ResponseWriter, r *http.Request) {
 	dbInitialize()
+
+	go func() {
+		if _, err := http.Get("http://pprotein.maca.jp:9000/api/group/collect"); err != nil {
+			log.Printf("failed to communicate with pprotein: %v", err)
+		}
+	}()
+
 	w.WriteHeader(http.StatusOK)
 }
 
@@ -792,6 +801,8 @@ func postAdminBanned(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
+	go standalone.Integrate(":8888")
+
 	host := os.Getenv("ISUCONP_DB_HOST")
 	if host == "" {
 		host = "localhost"
