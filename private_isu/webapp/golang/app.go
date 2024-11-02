@@ -675,7 +675,15 @@ func postIndex(w http.ResponseWriter, r *http.Request) {
 		log.Print(err)
 		return
 	}
-	writeImageToFile(filedata, pid)
+	ext := switch mime {
+	case "image/jpeg":
+		"jpg"
+	case "image/png":
+		"png"
+	case "image/gif":
+		"gif"
+	}
+	writeImageToFile(filedata, fmt.Sprintf("%d.%s", pid, ext))
 
 	http.Redirect(w, r, "/posts/"+strconv.FormatInt(pid, 10), http.StatusFound)
 }
