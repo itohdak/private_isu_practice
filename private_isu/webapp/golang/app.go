@@ -184,7 +184,7 @@ func makePosts(results []Post, csrfToken string, allComments bool) ([]Post, erro
 		var comments []Comment
 		if commentCached, ok := commentCache.Load(p.ID); ok {
 			comments = commentCached.([]Comment)
-			p.comments = len(comments)
+			p.CommentCount = len(comments)
 			if !allComments {
 				comments = comments[max(0, len(comments)-3):]
 			} else {
@@ -787,7 +787,7 @@ func postComment(w http.ResponseWriter, r *http.Request) {
 	id, _ := res.LastInsertId()
 	if commentCached, ok := commentCache.Load(postID); ok {
 		commentCached = append(commentCached.([]Comment), Comment{
-			ID:      id.(int),
+			ID:      int(id),
 			PostID:  postID,
 			UserID:  me.ID,
 			Comment: r.FormValue("comment"),
