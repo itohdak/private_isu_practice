@@ -711,7 +711,7 @@ func getImage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ext := r.PathValue("ext")
-	filename := fmt.Sprintf("/home/isucon/private_isu/webapp/img/%d.%s", post.ID, ext)
+	filename := fmt.Sprintf("/home/isucon/private_isu/webapp/img/%d.%s", pid, ext)
 	_, err = os.Stat(filename)
 	if err == nil {
 		w.Header().Set("X-Accel-Redirect", filename)
