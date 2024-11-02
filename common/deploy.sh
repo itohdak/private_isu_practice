@@ -34,9 +34,9 @@ cd /home/isucon/private_isu/webapp/golang/
 
 # もしpgo.pb.gzがあればPGOを利用してビルド
 if [ -e pgo.pb.gz ]; then
-  go build -o app -pgo=pgo.pb.gz
+  /home/isucon/.local/go/bin/go build -o app -pgo=pgo.pb.gz
 else
-  go build -o app
+  /home/isucon/.local/go/bin/go build -o app
 fi
 
 
