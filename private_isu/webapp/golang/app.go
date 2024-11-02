@@ -29,6 +29,8 @@ import (
 var (
 	db    *sqlx.DB
 	store *gsm.MemcacheStore
+
+	userCache sync.Map{}
 )
 
 const (
@@ -193,9 +195,15 @@ func makePosts(results []Post, csrfToken string, allComments bool) ([]Post, erro
 		}
 
 		for i := 0; i < len(comments); i++ {
-			err := db.Get(&comments[i].User, "SELECT * FROM `users` WHERE `id` = ?", comments[i].UserID)
-			if err != nil {
-				return nil, err
+			userCached, ok := userCache.Load(comments[i].UserID)
+			if ok {
+				comments[i].User = userCached.(User)
+			} else {
+				err := db.Get(&comments[i].User, "SELECT * FROM `users` WHERE `id` = ?", comments[i].UserID)
+				if err != nil {
+					return nil, err
+				}
+				userCached.Store(comments[i].UserID, comments[i].User)
 			}
 		}
 
@@ -817,7 +825,7 @@ func postAdminBanned(w http.ResponseWriter, r *http.Request) {
 	}
 
 	query := "UPDATE `users` SET `del_flg` = ? WHERE `id` = ?"
-
+	
 	err := r.ParseForm()
 	if err != nil {
 		log.Print(err)
@@ -826,6 +834,9 @@ func postAdminBanned(w http.ResponseWriter, r *http.Request) {
 
 	for _, id := range r.Form["uid[]"] {
 		db.Exec(query, 1, id)
+		if _ ok := userCache.Load(id); ok {
+			userCache.Delete(id)
+		}
 	}
 
 	http.Redirect(w, r, "/admin/banned", http.StatusFound)
