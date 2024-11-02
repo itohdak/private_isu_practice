@@ -675,13 +675,14 @@ func postIndex(w http.ResponseWriter, r *http.Request) {
 		log.Print(err)
 		return
 	}
-	ext := switch mime {
+	var ext string
+	switch mime {
 	case "image/jpeg":
-		"jpg"
+		ext = "jpg"
 	case "image/png":
-		"png"
+		ext = "png"
 	case "image/gif":
-		"gif"
+		ext = "gif"
 	}
 	writeImageToFile(filedata, fmt.Sprintf("%d.%s", pid, ext))
 
