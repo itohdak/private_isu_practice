@@ -31,7 +31,8 @@ var (
 	db    *sqlx.DB
 	store *gsm.MemcacheStore
 
-	userCache sync.Map
+	userCache    sync.Map
+	commentCache sync.Map
 )
 
 const (
@@ -180,45 +181,37 @@ func makePosts(results []Post, csrfToken string, allComments bool) ([]Post, erro
 	var posts []Post
 
 	for _, p := range results {
-		err := db.Get(&p.CommentCount, "SELECT COUNT(*) AS `count` FROM `comments` WHERE `post_id` = ?", p.ID)
-		if err != nil {
-			return nil, err
-		}
-
-		query := "SELECT * FROM `comments` WHERE `post_id` = ? ORDER BY `created_at` DESC"
-		if !allComments {
-			query += " LIMIT 3"
-		}
 		var comments []Comment
-		err = db.Select(&comments, query, p.ID)
-		if err != nil {
-			return nil, err
-		}
-
-		for i := 0; i < len(comments); i++ {
-			userCached, ok := userCache.Load(comments[i].UserID)
-			if ok {
-				comments[i].User = userCached.(User)
+		if commentCached, ok := commentCache.Load(p.ID); ok {
+			comments = commentCached.([]Comment)
+			p.CommentCount = len(comments)
+			if !allComments {
+				comments = comments[max(0, len(comments)-3):]
 			} else {
-				err := db.Get(&comments[i].User, "SELECT * FROM `users` WHERE `id` = ?", comments[i].UserID)
-				if err != nil {
-					return nil, err
-				}
-				userCache.Store(comments[i].UserID, comments[i].User)
+				comments = comments
 			}
-		}
+		} else {
+			err := db.Select(&comments, "SELECT * FROM `comments` WHERE `post_id` = ? ORDER BY `created_at`", p.ID)
+			if err != nil {
+				return nil, err
+			}
 
-		// reverse
-		for i, j := 0, len(comments)-1; i < j; i, j = i+1, j-1 {
-			comments[i], comments[j] = comments[j], comments[i]
+			p.CommentCount = len(comments)
+			for i := 0; i < len(comments); i++ {
+				user, _ := getUser(comments[i].UserID)
+				comments[i].User = user
+			}
+
+			commentCache.Store(p.ID, comments)
+			if !allComments {
+				comments = comments[max(0, len(comments)-3):]
+			}
 		}
 
 		p.Comments = comments
 
-		err = db.Get(&p.User, "SELECT * FROM `users` WHERE `id` = ?", p.UserID)
-		if err != nil {
-			return nil, err
-		}
+		user, _ := getUser(p.UserID)
+		p.User = user
 
 		p.CSRFToken = csrfToken
 
@@ -751,6 +744,21 @@ func getImage(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotFound)
 }
 
+func getUser(userID int) (User, error) {
+	userCached, ok := userCache.Load(userID)
+	var user User
+	if ok {
+		user = userCached.(User)
+	} else {
+		err := db.Get(&user, "SELECT * FROM `users` WHERE `id` = ?", userID)
+		if err != nil {
+			return User{}, err
+		}
+		userCache.Store(userID, user)
+	}
+	return user, nil
+}
+
 func postComment(w http.ResponseWriter, r *http.Request) {
 	me := getSessionUser(r)
 	if !isLogin(me) {
@@ -770,10 +778,21 @@ func postComment(w http.ResponseWriter, r *http.Request) {
 	}
 
 	query := "INSERT INTO `comments` (`post_id`, `user_id`, `comment`) VALUES (?,?,?)"
-	_, err = db.Exec(query, postID, me.ID, r.FormValue("comment"))
+	res, err := db.Exec(query, postID, me.ID, r.FormValue("comment"))
 	if err != nil {
 		log.Print(err)
 		return
+	}
+	user, _ := getUser(me.ID)
+	id, _ := res.LastInsertId()
+	if commentCached, ok := commentCache.Load(postID); ok {
+		commentCached = append(commentCached.([]Comment), Comment{
+			ID:      int(id),
+			PostID:  postID,
+			UserID:  me.ID,
+			Comment: r.FormValue("comment"),
+			User:    user,
+		})
 	}
 
 	http.Redirect(w, r, fmt.Sprintf("/posts/%d", postID), http.StatusFound)
@@ -826,7 +845,7 @@ func postAdminBanned(w http.ResponseWriter, r *http.Request) {
 	}
 
 	query := "UPDATE `users` SET `del_flg` = ? WHERE `id` = ?"
-	
+
 	err := r.ParseForm()
 	if err != nil {
 		log.Print(err)
