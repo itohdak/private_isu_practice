@@ -31,7 +31,7 @@ var (
 	db    *sqlx.DB
 	store *gsm.MemcacheStore
 
-	userCache sync.Map
+	userCache    sync.Map
 	commentCache sync.Map
 )
 
@@ -183,12 +183,12 @@ func makePosts(results []Post, csrfToken string, allComments bool) ([]Post, erro
 	for _, p := range results {
 		var comments []Comment
 		if commentCached, ok := commentCache.Load(p.ID); ok {
-			commentCached = commentCached.([]Comment)
-			p.CommentCount = len(commentCached)
+			comments = commentCached.([]Comment)
+			p.comments = len(comments)
 			if !allComments {
-				comments = commentCached[max(0, len(commentCached)-3):]
+				comments = comments[max(0, len(comments)-3):]
 			} else {
-				comments = commentCached
+				comments = comments
 			}
 		} else {
 			err := db.Get(&comments, "SELECT * FROM `comments` WHERE `post_id` = ? ORDER BY `created_at`", p.ID)
@@ -787,11 +787,11 @@ func postComment(w http.ResponseWriter, r *http.Request) {
 	id, _ := res.LastInsertId()
 	if commentCached, ok := commentCache.Load(postID); ok {
 		commentCached = append(commentCached.([]Comment), Comment{
-			ID: id,
-			PostID: postID,
-			UserID: me.ID,
+			ID:      id.(int),
+			PostID:  postID,
+			UserID:  me.ID,
 			Comment: r.FormValue("comment"),
-			User: user,
+			User:    user,
 		})
 	}
 
@@ -845,7 +845,7 @@ func postAdminBanned(w http.ResponseWriter, r *http.Request) {
 	}
 
 	query := "UPDATE `users` SET `del_flg` = ? WHERE `id` = ?"
-	
+
 	err := r.ParseForm()
 	if err != nil {
 		log.Print(err)
