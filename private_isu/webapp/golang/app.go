@@ -181,11 +181,12 @@ func makePosts(results []Post, csrfToken string, allComments bool) ([]Post, erro
 	var posts []Post
 
 	for _, p := range results {
-		var comments []comment
+		var comments []Comment
 		if commentCached, ok := commentCache.Load(p.ID); ok {
+			commentCached = commentCached.([]Comment)
 			p.CommentCount = len(commentCached)
 			if !allComments {
-				comments = comentCached[max(0, len(commentCached)-3):]
+				comments = commentCached[max(0, len(commentCached)-3):]
 			} else {
 				comments = commentCached
 			}
@@ -743,7 +744,7 @@ func getImage(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotFound)
 }
 
-func getUser(userID int64) (User, err) {
+func getUser(userID int) (User, error) {
 	userCached, ok := userCache.Load(userID)
 	var user User
 	if ok {
@@ -785,7 +786,7 @@ func postComment(w http.ResponseWriter, r *http.Request) {
 	user, _ := getUser(me.ID)
 	id, _ := res.LastInsertId()
 	if commentCached, ok := commentCache.Load(postID); ok {
-		commentCached = append(commentCached, Comment{
+		commentCached = append(commentCached.([]Comment), Comment{
 			ID: id,
 			PostID: postID,
 			UserID: me.ID,
