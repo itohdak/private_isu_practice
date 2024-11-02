@@ -662,7 +662,7 @@ func postIndex(w http.ResponseWriter, r *http.Request) {
 		query,
 		me.ID,
 		mime,
-		filedata,
+		[]byte{}, // filedata,
 		r.FormValue("body"),
 	)
 	if err != nil {
@@ -675,6 +675,7 @@ func postIndex(w http.ResponseWriter, r *http.Request) {
 		log.Print(err)
 		return
 	}
+	writeImageToFile(filedata, pid)
 
 	http.Redirect(w, r, "/posts/"+strconv.FormatInt(pid, 10), http.StatusFound)
 }
@@ -700,20 +701,19 @@ func getImage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	post := Post{}
-	err = db.Get(&post, "SELECT * FROM `posts` WHERE `id` = ?", pid)
-	if err != nil {
-		log.Print(err)
-		return
-	}
-
 	ext := r.PathValue("ext")
-
 	filename := fmt.Sprintf("/home/isucon/private_isu/webapp/img/%d.%s", post.ID, ext)
 	_, err = os.Stat(filename)
 	if err == nil {
 		w.Header().Set("X-Accel-Redirect", filename)
 		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	post := Post{}
+	err = db.Get(&post, "SELECT * FROM `posts` WHERE `id` = ?", pid)
+	if err != nil {
+		log.Print(err)
 		return
 	}
 
