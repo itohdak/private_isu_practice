@@ -902,6 +902,10 @@ func main() {
 	}
 	defer db.Close()
 
+	db.SetConnMaxLifetime(10 * time.Second)
+	db.SetMaxIdleConns(512)
+	db.SetMaxOpenConns(512)
+
 	r := chi.NewRouter()
 
 	r.Get("/initialize", getInitialize)
