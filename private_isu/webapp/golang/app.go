@@ -14,6 +14,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/bradfitz/gomemcache/memcache"
@@ -30,7 +31,7 @@ var (
 	db    *sqlx.DB
 	store *gsm.MemcacheStore
 
-	userCache sync.Map{}
+	userCache sync.Map
 )
 
 const (
@@ -203,7 +204,7 @@ func makePosts(results []Post, csrfToken string, allComments bool) ([]Post, erro
 				if err != nil {
 					return nil, err
 				}
-				userCached.Store(comments[i].UserID, comments[i].User)
+				userCache.Store(comments[i].UserID, comments[i].User)
 			}
 		}
 
@@ -834,7 +835,7 @@ func postAdminBanned(w http.ResponseWriter, r *http.Request) {
 
 	for _, id := range r.Form["uid[]"] {
 		db.Exec(query, 1, id)
-		if _ ok := userCache.Load(id); ok {
+		if _, ok := userCache.Load(id); ok {
 			userCache.Delete(id)
 		}
 	}
