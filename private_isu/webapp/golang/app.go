@@ -2,6 +2,7 @@ package main
 
 import (
 	crand "crypto/rand"
+	"database/sql"
 	"fmt"
 	"html/template"
 	"io"
@@ -168,7 +169,14 @@ func getSessionUser(r *http.Request) User {
 	}
 
 	u := User{}
-	u, _ = getuser(uid)
+	var id int
+	switch uid.(type) {
+	case int:
+		id = uid.(int)
+	case int64:
+		id = int(uid.(int64))
+	}
+	u, _ = getUser(id)
 
 	return u
 }
@@ -800,7 +808,7 @@ func getPostFromCache(postID int) (Post, error) {
 		if err != nil {
 			return Post{}, err
 		}
-		postCache.Store(PostID, Post)
+		postCache.Store(postID, post)
 	}
 	return post, nil
 }
