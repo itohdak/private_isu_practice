@@ -31,8 +31,7 @@ var (
 	db    *sqlx.DB
 	store *gsm.MemcacheStore
 
-	userCache    sync.Map
-	commentCache sync.Map
+	userCache sync.Map
 )
 
 const (
@@ -70,6 +69,19 @@ type Comment struct {
 	Comment   string    `db:"comment"`
 	CreatedAt time.Time `db:"created_at"`
 	User      User
+}
+
+type CommentWithUser struct {
+	ID              int       `db:"id"`
+	PostID          int       `db:"post_id"`
+	UserID          int       `db:"user_id"`
+	Comment         string    `db:"comment"`
+	CreatedAt       time.Time `db:"created_at"`
+	UserAccountName string    `db:"user_account_name"`
+	UserPasshash    string    `db:"user_passhash"`
+	UserAuthority   int       `db:"user_authority"`
+	UserDelFlg      int       `db:"user_del_flg"`
+	UserCreatedAt   time.Time `db:"user_created_at"`
 }
 
 func init() {
@@ -180,34 +192,56 @@ func getFlash(w http.ResponseWriter, r *http.Request, key string) string {
 func makePosts(results []Post, csrfToken string, allComments bool) ([]Post, error) {
 	var posts []Post
 
+	pids := []int{}
 	for _, p := range results {
-		var comments []Comment
-		if commentCached, ok := commentCache.Load(p.ID); ok {
-			comments = commentCached.([]Comment)
-			p.CommentCount = len(comments)
-			if !allComments {
-				comments = comments[max(0, len(comments)-3):]
-			} else {
-				comments = comments
-			}
+		pids = append(pids, p.ID)
+	}
+	query := "SELECT `comments`.*, `users`.`account_name` AS `user_account_name`, `users`.`passhash` AS `user_passhash`, `users`.`authority` AS `user_authority`, `users`.`del_flg` AS `user_del_flg`, `users`.`created_at` AS `user_created_at` FROM `comments`, `users` WHERE `comments`.`user_id` = `users`.`id` AND `post_id` IN (?) ORDER BY `created_at`"
+	sql, params, err := sqlx.In(query, pids)
+	if err != nil {
+		return []Post{}, fmt.Errorf("failed to build IN query: %w", err)
+	}
+	commentsWithUsers := []CommentWithUser{}
+	if err = db.Select(&commentsWithUsers, sql, params...); err != nil {
+		return []Post{}, fmt.Errorf("failed to exec IN query: %w", err)
+	}
+
+	commentsByPid := map[int][]Comment{}
+	for _, cwu := range commentsWithUsers {
+		comment := Comment{
+			ID:        cwu.ID,
+			PostID:    cwu.PostID,
+			UserID:    cwu.UserID,
+			Comment:   cwu.Comment,
+			CreatedAt: cwu.CreatedAt,
+			User: User{
+				ID:          cwu.UserID,
+				AccountName: cwu.UserAccountName,
+				Passhash:    cwu.UserPasshash,
+				Authority:   cwu.UserAuthority,
+				DelFlg:      cwu.UserDelFlg,
+				CreatedAt:   cwu.UserCreatedAt,
+			},
+		}
+		commentsByPid[comment.PostID] = append(
+			commentsByPid[comment.PostID],
+			comment,
+		)
+	}
+
+	var comments []Comment
+	for _, p := range results {
+		if c, ok := commentsByPid[p.ID]; ok {
+			comments = c
 		} else {
-			err := db.Select(&comments, "SELECT * FROM `comments` WHERE `post_id` = ? ORDER BY `created_at`", p.ID)
-			if err != nil {
-				return nil, err
-			}
-
-			p.CommentCount = len(comments)
-			for i := 0; i < len(comments); i++ {
-				user, _ := getUser(comments[i].UserID)
-				comments[i].User = user
-			}
-
-			commentCache.Store(p.ID, comments)
-			if !allComments {
-				comments = comments[max(0, len(comments)-3):]
-			}
+			comments = []Comment{}
 		}
 
+		p.CommentCount = len(comments)
+
+		if !allComments {
+			comments = comments[max(0, len(comments)-3):]
+		}
 		p.Comments = comments
 
 		user, _ := getUser(p.UserID)
@@ -397,7 +431,7 @@ func getIndex(w http.ResponseWriter, r *http.Request) {
 
 	results := []Post{}
 
-	err := db.Select(&results, fmt.Sprintf("SELECT `posts`.`id`, `posts`.`user_id`, `posts`.`body`, `posts`.`mime`, `posts`.`created_at` FROM `posts`, `users` WHERE `posts`.`user_id` = `users`.`id` AND `users`.`del_flg` = 0 ORDER BY `created_at` DESC LIMIT %d", postsPerPage))
+	err := db.Select(&results, fmt.Sprintf("SELECT STRAIGHT_JOIN `posts`.`id`, `posts`.`user_id`, `posts`.`body`, `posts`.`mime`, `posts`.`created_at` FROM `posts`, `users` WHERE `posts`.`user_id` = `users`.`id` AND `users`.`del_flg` = 0 ORDER BY `created_at` DESC LIMIT %d", postsPerPage))
 	if err != nil {
 		log.Print(err)
 		return
@@ -443,7 +477,7 @@ func getAccountName(w http.ResponseWriter, r *http.Request) {
 
 	results := []Post{}
 
-	err = db.Select(&results, "SELECT `id`, `user_id`, `body`, `mime`, `created_at` FROM `posts` WHERE `user_id` = ? ORDER BY `created_at` DESC", user.ID)
+	err = db.Select(&results, "SELECT `id`, `user_id`, `body`, `mime`, `created_at` FROM `posts` WHERE `user_id` = ? ORDER BY `created_at` DESC LIMIT ?", user.ID, postsPerPage)
 	if err != nil {
 		log.Print(err)
 		return
@@ -531,7 +565,7 @@ func getPosts(w http.ResponseWriter, r *http.Request) {
 	}
 
 	results := []Post{}
-	err = db.Select(&results, "SELECT `posts`.`id`, `posts`.`user_id`, `posts`.`body`, `posts`.`mime`, `posts`.`created_at` FROM `posts`, `users` WHERE `posts`.`user_id` = `users`.`id` AND `users`.`del_flg` = 0 AND `posts`.`created_at` <= ? ORDER BY `posts`.`created_at` DESC LIMIT ?", t.Format(ISO8601Format), postsPerPage)
+	err = db.Select(&results, "SELECT STRAIGHT_JOIN `posts`.`id`, `posts`.`user_id`, `posts`.`body`, `posts`.`mime`, `posts`.`created_at` FROM `posts`, `users` WHERE `posts`.`user_id` = `users`.`id` AND `users`.`del_flg` = 0 AND `posts`.`created_at` <= ? ORDER BY `posts`.`created_at` DESC LIMIT ?", t.Format(ISO8601Format), postsPerPage)
 	if err != nil {
 		log.Print(err)
 		return
@@ -778,21 +812,10 @@ func postComment(w http.ResponseWriter, r *http.Request) {
 	}
 
 	query := "INSERT INTO `comments` (`post_id`, `user_id`, `comment`) VALUES (?,?,?)"
-	res, err := db.Exec(query, postID, me.ID, r.FormValue("comment"))
+	_, err = db.Exec(query, postID, me.ID, r.FormValue("comment"))
 	if err != nil {
 		log.Print(err)
 		return
-	}
-	user, _ := getUser(me.ID)
-	id, _ := res.LastInsertId()
-	if commentCached, ok := commentCache.Load(postID); ok {
-		commentCached = append(commentCached.([]Comment), Comment{
-			ID:      int(id),
-			PostID:  postID,
-			UserID:  me.ID,
-			Comment: r.FormValue("comment"),
-			User:    user,
-		})
 	}
 
 	http.Redirect(w, r, fmt.Sprintf("/posts/%d", postID), http.StatusFound)
