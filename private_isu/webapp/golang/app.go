@@ -71,6 +71,19 @@ type Comment struct {
 	User      User
 }
 
+type CommentWithUser struct {
+	ID              int       `db:"id"`
+	PostID          int       `db:"post_id"`
+	UserID          int       `db:"user_id"`
+	Comment         string    `db:"comment"`
+	CreatedAt       time.Time `db:"created_at"`
+	UserAccountName string    `db:"user_account_name"`
+	UserPasshash    string    `db:"user_passhash"`
+	UserAuthority   int       `db:"user_authority"`
+	UserDelFlg      int       `db:"user_del_flg"`
+	UserCreatedAt   time.Time `db:"user_created_at"`
+}
+
 func init() {
 	memdAddr := os.Getenv("ISUCONP_MEMCACHED_ADDRESS")
 	if memdAddr == "" {
@@ -183,26 +196,40 @@ func makePosts(results []Post, csrfToken string, allComments bool) ([]Post, erro
 	for _, p := range results {
 		pids = append(pids, p.ID)
 	}
-	query := "SELECT * FROM `comments` WHERE `post_id` IN (?) ORDER BY `created_at`"
+	query := "SELECT `comments`.*, `users`.`account_name` AS `user_account_name`, `users`.`passhash` AS `user_passhash`, `users`.`authority` AS `user_authority`, `users`.`del_flg` AS `user_del_flg`, `users`.`created_at` AS `user_created_at` FROM `comments`, `users` WHERE `comments`.`user_id` = `users`.`id` AND `post_id` IN (?) ORDER BY `created_at`"
 	sql, params, err := sqlx.In(query, pids)
 	if err != nil {
 		return []Post{}, fmt.Errorf("failed to build IN query: %w", err)
 	}
-	comments := []Comment{}
-	if err = db.Select(&comments, sql, params...); err != nil {
+	commentsWithUsers := []CommentWithUser{}
+	if err = db.Select(&commentsWithUsers, sql, params...); err != nil {
 		return []Post{}, fmt.Errorf("failed to exec IN query: %w", err)
 	}
 
 	commentsByPid := map[int][]Comment{}
-	for _, comment := range comments {
-		user, _ := getUser(comment.UserID)
-		comment.User = user
+	for _, cwu := range commentsWithUsers {
+		comment := Comment{
+			ID:        cwu.ID,
+			PostID:    cwu.PostID,
+			UserID:    cwu.UserID,
+			Comment:   cwu.Comment,
+			CreatedAt: cwu.CreatedAt,
+			User: User{
+				ID:          cwu.UserID,
+				AccountName: cwu.UserAccountName,
+				Passhash:    cwu.UserPasshash,
+				Authority:   cwu.UserAuthority,
+				DelFlg:      cwu.UserDelFlg,
+				CreatedAt:   cwu.UserCreatedAt,
+			},
+		}
 		commentsByPid[comment.PostID] = append(
 			commentsByPid[comment.PostID],
 			comment,
 		)
 	}
 
+	var comments []Comment
 	for _, p := range results {
 		if c, ok := commentsByPid[p.ID]; ok {
 			comments = c
