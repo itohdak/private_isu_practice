@@ -193,7 +193,7 @@ func makePosts(results []Post, csrfToken string, allComments bool) ([]Post, erro
 		return []Post{}, fmt.Errorf("failed to exec IN query: %w", err)
 	}
 
-	var commentsByPid map[int][]Comment
+	commentsByPid := map[int][]Comment{}
 	for _, comment := range comments {
 		user, _ := getUser(comment.UserID)
 		comment.User = user
