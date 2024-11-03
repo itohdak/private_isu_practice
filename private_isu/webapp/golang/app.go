@@ -31,8 +31,7 @@ var (
 	db    *sqlx.DB
 	store *gsm.MemcacheStore
 
-	userCache    sync.Map
-	commentCache sync.Map
+	userCache sync.Map
 )
 
 const (
@@ -180,34 +179,42 @@ func getFlash(w http.ResponseWriter, r *http.Request, key string) string {
 func makePosts(results []Post, csrfToken string, allComments bool) ([]Post, error) {
 	var posts []Post
 
+	pids := []int{}
 	for _, p := range results {
-		var comments []Comment
-		if commentCached, ok := commentCache.Load(p.ID); ok {
-			comments = commentCached.([]Comment)
-			p.CommentCount = len(comments)
-			if !allComments {
-				comments = comments[max(0, len(comments)-3):]
-			} else {
-				comments = comments
-			}
+		pids = append(pids, p.ID)
+	}
+	query := "SELECT * FROM `comments` WHERE `post_id` IN (?) ORDER BY `created_at`"
+	sql, params, err := sqlx.In(query, pids)
+	if err != nil {
+		return []Post{}, fmt.Errorf("failed to build IN query: %w", err)
+	}
+	comments := []Comment{}
+	if err = db.Select(&comments, sql, params...); err != nil {
+		return []Post{}, fmt.Errorf("failed to exec IN query: %w", err)
+	}
+
+	var commentsByPid map[int][]Comment
+	for _, comment := range comments {
+		user, _ := getUser(comment.UserID)
+		comment.User = user
+		commentsByPid[comment.PostID] = append(
+			commentsByPid[comment.PostID],
+			comment,
+		)
+	}
+
+	for _, p := range results {
+		if c, ok := commentsByPid[p.ID]; ok {
+			comments = c
 		} else {
-			err := db.Select(&comments, "SELECT * FROM `comments` WHERE `post_id` = ? ORDER BY `created_at`", p.ID)
-			if err != nil {
-				return nil, err
-			}
-
-			p.CommentCount = len(comments)
-			for i := 0; i < len(comments); i++ {
-				user, _ := getUser(comments[i].UserID)
-				comments[i].User = user
-			}
-
-			commentCache.Store(p.ID, comments)
-			if !allComments {
-				comments = comments[max(0, len(comments)-3):]
-			}
+			comments = []Comment{}
 		}
 
+		p.CommentCount = len(comments)
+
+		if !allComments {
+			comments = comments[max(0, len(comments)-3):]
+		}
 		p.Comments = comments
 
 		user, _ := getUser(p.UserID)
@@ -778,21 +785,10 @@ func postComment(w http.ResponseWriter, r *http.Request) {
 	}
 
 	query := "INSERT INTO `comments` (`post_id`, `user_id`, `comment`) VALUES (?,?,?)"
-	res, err := db.Exec(query, postID, me.ID, r.FormValue("comment"))
+	_, err = db.Exec(query, postID, me.ID, r.FormValue("comment"))
 	if err != nil {
 		log.Print(err)
 		return
-	}
-	user, _ := getUser(me.ID)
-	id, _ := res.LastInsertId()
-	if commentCached, ok := commentCache.Load(postID); ok {
-		commentCached = append(commentCached.([]Comment), Comment{
-			ID:      int(id),
-			PostID:  postID,
-			UserID:  me.ID,
-			Comment: r.FormValue("comment"),
-			User:    user,
-		})
 	}
 
 	http.Redirect(w, r, fmt.Sprintf("/posts/%d", postID), http.StatusFound)
