@@ -431,7 +431,7 @@ func getIndex(w http.ResponseWriter, r *http.Request) {
 
 	results := []Post{}
 
-	err := db.Select(&results, fmt.Sprintf("SELECT `posts`.`id`, `posts`.`user_id`, `posts`.`body`, `posts`.`mime`, `posts`.`created_at` FROM `posts`, `users` WHERE `posts`.`user_id` = `users`.`id` AND `users`.`del_flg` = 0 ORDER BY `created_at` DESC LIMIT %d", postsPerPage))
+	err := db.Select(&results, fmt.Sprintf("SELECT STRAIGHT_JOIN `posts`.`id`, `posts`.`user_id`, `posts`.`body`, `posts`.`mime`, `posts`.`created_at` FROM `posts`, `users` WHERE `posts`.`user_id` = `users`.`id` AND `users`.`del_flg` = 0 ORDER BY `created_at` DESC LIMIT %d", postsPerPage))
 	if err != nil {
 		log.Print(err)
 		return
@@ -565,7 +565,7 @@ func getPosts(w http.ResponseWriter, r *http.Request) {
 	}
 
 	results := []Post{}
-	err = db.Select(&results, "SELECT `posts`.`id`, `posts`.`user_id`, `posts`.`body`, `posts`.`mime`, `posts`.`created_at` FROM `posts`, `users` WHERE `posts`.`user_id` = `users`.`id` AND `users`.`del_flg` = 0 AND `posts`.`created_at` <= ? ORDER BY `posts`.`created_at` DESC LIMIT ?", t.Format(ISO8601Format), postsPerPage)
+	err = db.Select(&results, "SELECT STRAIGHT_JOIN `posts`.`id`, `posts`.`user_id`, `posts`.`body`, `posts`.`mime`, `posts`.`created_at` FROM `posts`, `users` WHERE `posts`.`user_id` = `users`.`id` AND `users`.`del_flg` = 0 AND `posts`.`created_at` <= ? ORDER BY `posts`.`created_at` DESC LIMIT ?", t.Format(ISO8601Format), postsPerPage)
 	if err != nil {
 		log.Print(err)
 		return
