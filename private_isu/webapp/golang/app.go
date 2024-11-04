@@ -916,7 +916,7 @@ func myMiddleware(next http.Handler) http.Handler {
 			uuid, _ := uuid.NewRandom()
 			http.SetCookie(w, &http.Cookie{
 				Name:  "my_session_id",
-				Value: uuid,
+				Value: fmt.Sprintf("%s", uuid),
 			})
 			sid = uuid
 		} else {
