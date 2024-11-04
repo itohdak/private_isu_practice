@@ -919,7 +919,7 @@ func myMiddleware(next http.Handler) http.Handler {
 				Name:  "my_session_id",
 				Value: fmt.Sprintf("%s", uuid),
 			})
-			sid = uuid
+			sid = fmt.Sprintf("%s", uuid)
 		} else {
 			if prevRoutePattern, ok := userPrevActivity.Load(sid); ok {
 				trans := fmt.Sprintf("%s --> %s", prevRoutePattern, currRoutePattern)
