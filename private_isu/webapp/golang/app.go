@@ -2,6 +2,7 @@ package main
 
 import (
 	crand "crypto/rand"
+	"database/sql"
 	"fmt"
 	"html/template"
 	"io"
@@ -32,6 +33,7 @@ var (
 	store *gsm.MemcacheStore
 
 	userCache sync.Map
+	postCache sync.Map
 )
 
 const (
@@ -167,11 +169,14 @@ func getSessionUser(r *http.Request) User {
 	}
 
 	u := User{}
-
-	err := db.Get(&u, "SELECT * FROM `users` WHERE `id` = ?", uid)
-	if err != nil {
-		return User{}
+	var id int
+	switch uid.(type) {
+	case int:
+		id = uid.(int)
+	case int64:
+		id = int(uid.(int64))
 	}
+	u, _ = getUser(id)
 
 	return u
 }
@@ -600,21 +605,21 @@ func getPostsID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	results := []Post{}
-	err = db.Select(&results, "SELECT * FROM `posts` WHERE `id` = ?", pid)
+	post, err := getPostFromCache(pid)
 	if err != nil {
-		log.Print(err)
-		return
+		if err == sql.ErrNoRows {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		} else {
+			log.Print(err)
+			return
+		}
 	}
 
+	results := []Post{post}
 	posts, err := makePosts(results, getCSRFToken(r), true)
 	if err != nil {
 		log.Print(err)
-		return
-	}
-
-	if len(posts) == 0 {
-		w.WriteHeader(http.StatusNotFound)
 		return
 	}
 
@@ -755,9 +760,8 @@ func getImage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	post := Post{}
-	err = db.Get(&post, "SELECT * FROM `posts` WHERE `id` = ?", pid)
-	if err != nil {
+	post, ok := getPostFromCache(pid)
+	if ok != nil {
 		log.Print(err)
 		return
 	}
@@ -791,6 +795,21 @@ func getUser(userID int) (User, error) {
 		userCache.Store(userID, user)
 	}
 	return user, nil
+}
+
+func getPostFromCache(postID int) (Post, error) {
+	postCached, ok := postCache.Load(postID)
+	var post Post
+	if ok {
+		post = postCached.(Post)
+	} else {
+		err := db.Get(&post, "SELECT * FROM `posts` WHERE `id` = ?", postID)
+		if err != nil {
+			return Post{}, err
+		}
+		postCache.Store(postID, post)
+	}
+	return post, nil
 }
 
 func postComment(w http.ResponseWriter, r *http.Request) {
