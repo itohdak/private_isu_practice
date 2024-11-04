@@ -911,7 +911,8 @@ func postAdminBanned(w http.ResponseWriter, r *http.Request) {
 func myMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		currRoutePattern := chi.RouteContext(r.Context()).RoutePattern()
-		sid, err := r.Cookie("my_session_id")
+		cookie, err := r.Cookie("my_session_id")
+		sid := cookie.Value
 		if err != nil {
 			uuid, _ := uuid.NewRandom()
 			http.SetCookie(w, &http.Cookie{
