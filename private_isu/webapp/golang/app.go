@@ -22,6 +22,7 @@ import (
 	gsm "github.com/bradleypeabody/gorilla-sessions-memcache"
 	"github.com/go-chi/chi/v5"
 	_ "github.com/go-sql-driver/mysql"
+	"github.com/google/uuid"
 	"github.com/gorilla/sessions"
 	"github.com/jmoiron/sqlx"
 
@@ -34,6 +35,9 @@ var (
 
 	userCache sync.Map
 	postCache sync.Map
+
+	userPrevActivity sync.Map
+	userActivity     sync.Map
 )
 
 const (
@@ -904,6 +908,30 @@ func postAdminBanned(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/admin/banned", http.StatusFound)
 }
 
+func myMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		currRoutePattern := chi.RouteContext(r.Context()).RoutePattern()
+		sid, err := r.Cookie("my_session_id")
+		if err != nil {
+			uuid, _ := uuid.NewRandom()
+			http.SetCookie(w, &http.Cookie{
+				Name:  "my_session_id",
+				Value: uuid,
+			})
+			sid = uuid
+		} else {
+			if prevRoutePattern, ok := userPrevActivity.Load(sid); ok {
+				trans := fmt.Sprintf("%s --> %s", prevRoutePattern, currRoutePattern)
+				cnt, _ := userActivity.LoadOrStore(trans, int64(0))
+				userActivity.Store(trans, cnt.(int64)+1)
+				log.Printf("%s: %d\n", trans, cnt.(int64)+1)
+			}
+		}
+		userPrevActivity.Store(sid, currRoutePattern)
+		next.ServeHTTP(w, r)
+	})
+}
+
 func main() {
 	go standalone.Integrate(":8888")
 
@@ -949,6 +977,8 @@ func main() {
 	db.SetMaxOpenConns(512)
 
 	r := chi.NewRouter()
+
+	r.Use(myMiddleware)
 
 	r.Get("/initialize", getInitialize)
 	r.Get("/login", getLogin)
