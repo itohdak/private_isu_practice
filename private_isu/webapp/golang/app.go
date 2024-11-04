@@ -760,9 +760,8 @@ func getImage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	post := Post{}
-	err = db.Get(&post, "SELECT * FROM `posts` WHERE `id` = ?", pid)
-	if err != nil {
+	post, ok := getPostFromCache(pid)
+	if ok != nil {
 		log.Print(err)
 		return
 	}
