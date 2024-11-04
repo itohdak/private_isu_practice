@@ -910,7 +910,7 @@ func postAdminBanned(w http.ResponseWriter, r *http.Request) {
 
 func myMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		log.Printf("%+v", chi.RouteContext(r.Context()))
+		next.ServeHTTP(w, r)
 		currRoutePattern := chi.RouteContext(r.Context()).RoutePattern()
 		cookie, err := r.Cookie("my_session_id")
 		sid := cookie.Value
@@ -930,8 +930,6 @@ func myMiddleware(next http.Handler) http.Handler {
 			}
 		}
 		userPrevActivity.Store(sid, currRoutePattern)
-		next.ServeHTTP(w, r)
-		log.Printf("%+v", chi.RouteContext(r.Context()))
 	})
 }
 
