@@ -931,6 +931,7 @@ func myMiddleware(next http.Handler) http.Handler {
 		}
 		userPrevActivity.Store(sid, currRoutePattern)
 		next.ServeHTTP(w, r)
+		log.Printf("%+v", chi.RouteContext(r.Context()))
 	})
 }
 
